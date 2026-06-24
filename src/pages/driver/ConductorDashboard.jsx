@@ -50,12 +50,21 @@ export default function ConductorDashboard() {
   const cargarMisGuias = async () => {
     setLoadingGuias(true);
     try {
-      const res = await getGuias({ conductorid: user?.id, rolid: 1 });
+      // Si tenemos el ID del conductor, filtramos por él.
+      // Si no (la API no lo devolvió en el login), traemos todas y el token JWT
+      // identifica al conductor en el backend.
+      const params = user?.id ? { conductorid: user.id } : {};
+      const res  = await getGuias(params);
       const raw  = res.data;
-      const list = Array.isArray(raw) ? raw : (raw?.guias || raw?.data || []);
+      let list = [];
+      if (Array.isArray(raw)) {
+        list = raw;
+      } else if (raw && typeof raw === 'object') {
+        list = raw.guias || raw.data || raw.items || Object.values(raw).find(Array.isArray) || [];
+      }
       setMisGuias(list);
     } catch (e) {
-      console.error('Error cargando mis guías:', e);
+      console.error('Error cargando mis guías:', e.response?.data || e.message);
     } finally {
       setLoadingGuias(false);
     }
