@@ -53,12 +53,11 @@ export default function ConductorDashboard() {
     setLoadingGuias(true);
     setErrorGuias(null);
     try {
-      // Llamamos sin rolid porque el conductor no pasa rolid
-      // El token JWT identifica al conductor en el backend
-      const params = {};
-      if (user?.id) params.conductorid = user.id;
-
-      const res  = await getGuias(params);
+      // IMPORTANTE: el ID del conductor en Supabase es un UUID (string),
+      // pero la API espera conductorid como entero.
+      // Solución: llamar sin conductorid — el backend usa el token JWT
+      // para identificar al conductor y filtrar sus guías.
+      const res = await getGuias({});
       setMisGuias(normalizeList(res.data));
     } catch (err) {
       const status = err.response?.status;
@@ -115,9 +114,15 @@ export default function ConductorDashboard() {
     setSending(true);
     setErrorMsg('');
 
+    // user.id del JWT de Supabase es un UUID (string).
+    // La API necesita conductorid e registradopor como enteros.
+    // Si no tenemos el ID numérico guardado, usamos 1 como fallback temporal.
+    // TODO: cuando el backend devuelva el id numérico en el login, actualizar aquí.
+    const numericId = parseInt(localStorage.getItem('numeric_conductor_id') || '1', 10);
+
     const payload = {
       numeroguia:     formData.numeroguia.trim(),
-      conductorid:    user?.id,
+      conductorid:    numericId,
       vehiculoid:     parseInt(formData.vehiculoid),
       empresaid:      parseInt(formData.empresaid),
       tiposervicioid: parseInt(formData.tiposervicioid),
@@ -126,7 +131,7 @@ export default function ConductorDashboard() {
       pesotoneladas:  parseFloat(formData.pesotoneladas),
       estadoid:       1,
       fechaservicio:  formData.fechaservicio,
-      registradopor:  user?.id,
+      registradopor:  numericId,
       contenedor: {
         numerocontenedor:   formData.numerocontenedor.trim(),
         precinto:           formData.precinto.trim(),
@@ -279,6 +284,25 @@ export default function ConductorDashboard() {
               <form onSubmit={step === 2 ? handleSubmit : (e) => { e.preventDefault(); nextStep(); }}>
                 {step === 1 && (
                   <div className="space-y-3">
+                    {/* Aviso sobre el ID numérico del conductor */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+                      ⚠️ <strong>ID Conductor numérico:</strong> Ingresa el ID entero de tu cuenta en la tabla <code>conductores</code> de la base de datos (no el UUID de Supabase).
+                    </div>
+                    <InputField
+                      name="_conductorid_num"
+                      label="Mi ID de Conductor (numérico)"
+                      placeholder="Ej. 1, 2, 3..."
+                      type="number"
+                      value={localStorage.getItem('numeric_conductor_id') || ''}
+                      onChange={(e) => {
+                        localStorage.setItem('numeric_conductor_id', e.target.value);
+                        // Forzar re-render sin usar state para no perder foco
+                        document.getElementById('conductor-id-display').textContent = e.target.value || '—';
+                      }}
+                    />
+                    <p className="text-xs text-slate-400">
+                      ID guardado: <span id="conductor-id-display" className="font-semibold text-slate-600">{localStorage.getItem('numeric_conductor_id') || '—'}</span>
+                    </p>
                     <InputField name="numeroguia"    label="N° Guía Transportista"  placeholder="Ej. T001-000456"     value={formData.numeroguia}    onChange={handleChange} />
                     <InputField name="empresaid"     label="ID Empresa"             placeholder="Ej. 1"               value={formData.empresaid}     onChange={handleChange} type="number" />
                     <div className="grid grid-cols-2 gap-3">
