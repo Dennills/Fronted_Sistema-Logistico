@@ -8,12 +8,18 @@ import Login from './pages/auth/Login';
 import ConductorDashboard from './pages/driver/ConductorDashboard';
 import VerificacionGuias from './pages/admin/VerificacionGuias';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import Seguimiento from './pages/admin/Seguimiento';
+import GestionConductores from './pages/admin/GestionConductores';
 import Liquidaciones from './pages/cashier/Liquidaciones';
 
-/**
- * Componente de ruta protegida por rol.
- * Redirige al login si no hay sesión activa, o a "/" si el rol no tiene permisos.
- */
+// Vistas vacías (para el menú)
+const PlaceholderView = ({ title }) => (
+  <div className="p-8">
+    <h1 className="text-2xl font-bold text-slate-800">{title}</h1>
+    <p className="text-slate-500 mt-2">Módulo en construcción.</p>
+  </div>
+);
+
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -25,10 +31,9 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 export default function App() {
   const { user, loading } = useAuth();
 
-  // Redireccion automática según rolid al acceder a "/"
   const getRootRedirect = () => {
     if (!user) return '/login';
-    if (user.rolid === 1) return '/admin/verificaciones';
+    if (user.rolid === 1) return '/admin/dashboard';
     if (user.rolid === 2) return '/cashier/liquidaciones';
     if (user.rolid === 3) return '/driver/ruta';
     return '/login';
@@ -37,66 +42,32 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-500 text-sm font-medium">Cargando sistema...</p>
-        </div>
+        <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
     <Routes>
-      {/* Raíz: redirige según sesión y rol */}
       <Route path="/" element={<Navigate to={getRootRedirect()} replace />} />
-
-      {/* Login público */}
       <Route path="/login" element={<Login />} />
 
-      {/* Rutas protegidas dentro del DashboardLayout */}
       <Route element={<DashboardLayout />}>
+        {/* Rutas Administrador */}
+        <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={[1]}><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/verificaciones" element={<ProtectedRoute allowedRoles={[1]}><VerificacionGuias /></ProtectedRoute>} />
+        <Route path="/admin/seguimiento" element={<ProtectedRoute allowedRoles={[1]}><Seguimiento /></ProtectedRoute>} />
+        <Route path="/admin/conductores" element={<ProtectedRoute allowedRoles={[1]}><GestionConductores /></ProtectedRoute>} />
+        <Route path="/admin/empresas" element={<ProtectedRoute allowedRoles={[1]}><PlaceholderView title="Empresas" /></ProtectedRoute>} />
+        <Route path="/admin/configuracion" element={<ProtectedRoute allowedRoles={[1]}><PlaceholderView title="Configuración" /></ProtectedRoute>} />
 
-        {/* Admin (rolid = 1) */}
-        <Route
-          path="/admin/verificaciones"
-          element={
-            <ProtectedRoute allowedRoles={[1]}>
-              <VerificacionGuias />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/dashboard"
-          element={
-            <ProtectedRoute allowedRoles={[1]}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
+        {/* Ruta Cajero */}
+        <Route path="/cashier/liquidaciones" element={<ProtectedRoute allowedRoles={[2]}><Liquidaciones /></ProtectedRoute>} />
 
-        {/* Cajero (rolid = 2) */}
-        <Route
-          path="/cashier/liquidaciones"
-          element={
-            <ProtectedRoute allowedRoles={[2]}>
-              <Liquidaciones />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Conductor (rolid = 3) */}
-        <Route
-          path="/driver/ruta"
-          element={
-            <ProtectedRoute allowedRoles={[3]}>
-              <ConductorDashboard />
-            </ProtectedRoute>
-          }
-        />
-
+        {/* Ruta Conductor */}
+        <Route path="/driver/ruta" element={<ProtectedRoute allowedRoles={[3]}><ConductorDashboard /></ProtectedRoute>} />
       </Route>
 
-      {/* Cualquier ruta desconocida redirige a raíz */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

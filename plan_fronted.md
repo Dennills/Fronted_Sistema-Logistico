@@ -1,56 +1,104 @@
-# PROMPT MAESTRO: Reconstrucción y Adaptación de Interfaces por Roles — FRONT_PERENE
+# 🚨 CORRECCIÓN URGENTE: MAPEO DE PROPIEDADES EN TARJETAS DE CONDUCTOR (`image_5f78f8.png`)
 
- Vamos a reconstruir y adaptar las pantallas internas por roles del proyecto "FRONT_PERENE" para conectarlas de forma definitiva con nuestra API REST en producción alojada en:
- `https://api-rest-sistema-logistico.onrender.com/`
+Al revisar la pestaña "Mis Guías" , se observa que todas las tarjetas repiten la información genérica fija de contenedores en ceros, precintos vacíos y la leyenda "Sin peso". Debes corregir el mapeo del componente de React de la siguiente manera:
 
----
+### 🛠️ 1. Lógica de Renderizado y Fallback de Propiedades
+Asegúrate de que el bucle `.map()` que genera las tarjetas extraiga dinámicamente las llaves del objeto de la guía (`guia` o `g`). Si una propiedad viene de la API o del estado con un formato no definido, aplica un valor por defecto realista y quita cualquier texto estático. 
 
-## 🚨 REGLAS ABSOLUTAS DE ARQUITECTURA E INTERACTIVIDAD
-
-1. **NO TOCAR LA PANTALLA DE LOGIN:** La lógica de autenticación actual y la pantalla de Login ya funcionan perfectamente. Debes mantenerlas intactas. Trabajaremos únicamente en los módulos y dashboards internos de cada rol una vez iniciada la sesión.
-2. **RESPONSIVIDAD DEL CONDUCTOR (HÍBRIDO PC/MÓVIL):** El panel del Conductor ya no debe estar encerrado en un contenedor rígido de teléfono. Debe usar un layout responsivo (Desktop-First / Mobile-Friendly) basado en grids de Tailwind (`grid grid-cols-1 md:grid-cols-3`). Si se proyecta en la PC de escritorio de la universidad debe verse amplio y profesional, pero si se achica la ventana debe adaptarse fluidamente a formato móvil.
-3. **CRUD 100% FUNCIONAL EN MEMORIA (FAILSAFE):** Para asegurar que el sistema sea totalmente interactivo durante la sustentación ante el jurado, todos los componentes deben realizar operaciones CRUD reales en vivo. Si la API en la nube falla, tarda en responder o devuelve arreglos vacíos, debes atrapar el error (`catch`) y operar directamente sobre variables de estado locales (espejo) inicializadas con la data Mock del prototipo.
-   - Si el Conductor registra una guía, esta debe insertarse al inicio del listado inmediatamente y actualizar el contador quincenal.
-   - Si el Admin valida o anula una guía, el estado visual de esa fila debe mutar y actualizarse en tiempo real en la pantalla.
-   - Si el Cajero cierra una quincena, el estado debe cambiar visualmente.
+Reemplaza la estructura estática por este mapeo lógico dinámico:
+*   **ID / Código de Guía (Título de la tarjeta):** Debe renderizar `{g.numero_guia || g.numeroguia || 'G-000001'}`. Evita textos planos inventados como "T007" o "T43ffd".
+*   **Número de Contenedor:** Reemplaza el texto fijo `TCKU0000000` por el valor real `{g.num_contenedor || g.contenedor || 'TCKU3456789'}`.
+*   **Número de Precinto:** Reemplaza `PT-00000` por el valor real `{g.precinto || 'PT-22841'}`.
+*   **Peso en Toneladas:** Elimina definitivamente la frase estática `"Sin peso"`. En su lugar, debe pintar el valor numérico acompañado de la unidad de medida: `{g.peso_toneladas || g.peso || '22.40'} TN`.
 
 ---
 
-## 🛠️ COMPONENTES A IMPLEMENTAR / MODIFICAR
+### 🗄️ 2. Estructura de Datos Base para el Listado (Mínimo 10 Guías Variadas)
+En caso de que la API de producción retorne una colección vacía, la lista local que alimenta este componente debe inicializar 10 objetos con datos de negocio consistentes y variados para que ninguna tarjeta sea idéntica a otra. Ejemplo de los primeros registros de contingencia:
 
-### 1. CAPA DE SERVICIOS (`src/services/apiService.js`)
-- Configura las llamadas HTTP hacia la URL base: `https://api-rest-sistema-logistico.onrender.com/api`.
-- Inicializa arreglos globales mutables (`let MOCK_GUIAS`, `let MOCK_LIQUIDACIONES`) con datos del prototipo (Conductores reales: R. Huanca, J. Quispe, C. Flores, M. Torres).
-- Implementa y exporta las siguientes funciones con manejo de errores `try/catch` de contingencia:
-  - `getConductores()`: Si falla la API, devuelve la lista con los 4 choferes, sus placas habituales y estados de actividad.
-  - `getAuxiliares()`: Devuelve los catálogos para los formularios (Empresas: Perene, GKO, Pao Cargo; Destinos fijos: IMUPESA / IMUPESA VACÍOS; Configuración: 1x20, 2x20, 1x40; Servicios: Lleno, Vacío, Retiro, Devolución).
-  - `getGuias()` / `createGuia(data)`: Si falla la conexión, realiza un `.unshift()` en el arreglo local de MOCK_GUIAS simulando la inserción exacta (normalizando el contenedor a mayúsculas y sin caracteres raros) y devuelve un flag de éxito junto al correlativo simulado (Ej: `G-000004`).
-  - `updateEstadoGuia(id, nuevoEstado, motivo)`: Cambia el campo `estado` de la guía en memoria local.
-  - `getLiquidaciones()`: Devuelve las sábanas de cálculo financiero quincenal.
+```javascript
+const CONTINGENCIA_CONDUCTOR = [
+  { numeroguia: "G-000001", contenedor: "TCKU3456789", precinto: "PT-22841", peso: "22.40", ruta: "Almacén Gambetta → IMUPESA", estado: "REGISTRADA" },
+  { numeroguia: "G-000002", contenedor: "MSDU9871234", precinto: "PT-22842", peso: "18.50", ruta: "DP World → IMUPESA VACÍOS", estado: "REGISTRADA" },
+  { numeroguia: "G-000003", contenedor: "HLXU4521098", precinto: "PT-22843", peso: "24.10", ruta: "APM Terminals → IMUPESA", estado: "REGISTRADA" },
+  { numeroguia: "G-000004", contenedor: "CMAU6634512", precinto: "PT-22844", peso: "12.20", ruta: "Almacén Lurín → IMUPESA VACÍOS", estado: "REGISTRADA" }
+];
 
-### 2. PANEL DEL CONDUCTOR (`src/pages/driver/DriverPanel.jsx`)
-- **Header Adaptable:** Muestra datos fijos del chofer logueado ("R. Huanca • Unidad: ABC-123") y dos botones superiores tipo pestañas: `"📋 Mis Guías"` y `"➕ Registrar Nueva"`.
-- **Pestaña "Mis Guías":** Un buscador de texto en tiempo real y un Grid responsivo de tarjetas que muestre: número de guía, ruta completa, contenedor, precinto, peso, tipo de operación, estado de carga y tag de estado (`REGISTRADA` / `VALIDADA` / `ANULADA`). Incluye un banner con el contador dinámico de guías registradas en la quincena.
-- **Pestaña "Nueva Guía":** Formulario estético utilizando `<input type="date">` nativos del sistema operativo para Fecha de Emisión e Inicio de Traslado. Inputs para Empresa, Placa, Contenedor, Precinto, Peso (numérico) y selectores interactivos para Operación (Embarque/Descarga) y Estado de Carga. Al enviar con éxito, dispara una alerta/modal visual, inyecta la guía en el estado en memoria y redirige automáticamente al listado.
 
-### 3. PANEL DEL CAJERO (`src/pages/cashier/CashierPanel.jsx`)
-- **Control de Cierre:** Interfaz panorámica de escritorio con selectores superiores para Mes, Año y Quincena (1ra o 2da).
-- **Tabla Financiera:** Muestra las liquidaciones de los conductores detallando: Conductor, Empresa, Nº de guías contadas, Tarifa base, Bonos adicionales, Descuentos aplicados y el Total Neto Calculado a pagar.
-- **Acciones Vivas:** 
-  - Botón "Cerrar Quincena": Al pulsarlo, cambia el estado visual de esa liquidación de `ABIERTA` a `CERRADA` mediante un badge dinámico de Tailwind.
-  - Botón "Exportar a Excel": Simula el streaming de descarga mostrando un aviso estético de procesamiento.
-- **Auditoría Interna:** Al hacer clic en la fila de cualquier conductor, abre un modal o panel lateral (Drawer) que renderice la lista exacta de guías de remisión que componen y justifican esa suma de dinero para resolver reclamos.
 
-### 4. PANEL DEL ADMINISTRADOR (`src/pages/admin/AdminPanel.jsx`)
-- **Métricas KPI:** 3 tarjetas superiores con contadores dinámicos (Guías Registradas Hoy, Conductores en Ruta, Monto por Liquidar).
-- **Tabla Maestra Global:** Listado total de guías del sistema con filtros combinados por rango de fechas y conductor. Cada fila de la tabla debe contar con dos botones de acción CRUD inmediatos:
-  - Botón `[Verificar]`: Al darle clic, transmuta el estado de la guía a `VALIDADA` en la interfaz al instante (badge verde).
-  - Botón `[Anular]`: Abre un prompt o pequeño modal integrado que solicita obligatoriamente ingresar un "Motivo de anulación". Al confirmar, actualiza el estado a `ANULADA` (badge rojo) e indexa el motivo en el detalle, manteniendo la fila visible en el registro histórico.
-- **Trazabilidad de Contenedor:** Sección independiente con un buscador exacto por número de contenedor. Al ingresar un código (Ej: `TCKU3456789`), dibuja un Timeline vertical cronológico e interactivo que muestre todos los movimientos históricos (Fechas, choferes, rutas y estados) por los que ha pasado ese contenedor en el sistema.
+# 🚨 CORRECCIÓN URGENTE: DINÁMICA DE FECHAS Y EXPORTACIÓN PDF EN ROL CAJERO
+ La tabla financiera debe responder dinámicamente al cambio de los selectores de MES y QUINCENA, poblando los datos en vivo ya sea consumiendo la API o mediante el estado local mutable.
 
 ---
 
-## 🎨 REQUERIMIENTOS ESTÉTICOS Y TÉCNICOS
-- Usa hooks estándar (`useState`, `useEffect`) para controlar los estados mutables espejo.
-- Estiliza con Tailwind CSS moderno utilizando esquinas muy redondeadas (`rounded-2xl`), sombras suaves (`shadow-sm`), transiciones de color en los botones (`transition-all duration-200`) y fuentes legibles de gran tamaño para el jurado.
-- Asegura que el flujo completo de botones sea interactivo y reactivo en todo momento.
+## 📅 1. DISTRIBUCIÓN FILTRADA DE DATA FINANCIERA (CON O SIN API)
+
+Implementa un hook `useEffect` conectado a los estados de los selectores (`anio`, `mes`, `quincena`). Si la API no devuelve registros o falla, el sistema debe filtrar o asignar automáticamente los siguientes volúmenes de datos realistas:
+
+*   **Caso A: Junio - 1ra Quincena (Días 1-15):** Mantén los conductores base visibles en la imagen (R. Huanca, J. Quispe, C. Flores, M. Torres, A. Sánchez, L. Gómez) con sus respectivos montos.
+*   **Caso B: Junio - 2da Quincena (Días 16-30):** Al cambiar a esta opción, la tabla debe mutar automáticamente para mostrar un listado robusto de **15 registros de conductores distintos** con cálculos financieros completos de fin de mes.
+*   **Caso C: Julio - 1ra Quincena (Filtrado al 1 de Julio):** Al seleccionar el mes de Julio, la tabla se debe reducir de inmediato a **solo 3 registros de conductores** operando de manera funcional para simular la data procesada únicamente en el primer día del mes.
+
+---
+
+## 📄 2. ARREGLO DEL BOTÓN "EXPORTAR A PDF" (CLIENT-SIDE GENERATION)
+
+Para solucionar el error de generación visualizado en el maquetado, debes integrar de manera efectiva la librería `jsPDF` (y opcionalmente `jspdf-autotable`) directamente en el Frontend de la siguiente manera:
+
+1.  **Eliminación del Banner de Error:** Remueve el contenedor de alerta condicional `<div className="text-red-700 bg-red-100">` que gatilla el mensaje "Error al generar el PDF".
+2.  **Lógica del Botón:** Al hacer clic en `[Exportar a PDF]`, la función debe instanciar un nuevo documento, leer el estado de los selectores superiores para armar el encabezado dinámico (Ej: *"Reporte de Liquidación - Junio 2026 - 2da Quincena"*) y mapear las filas del estado de conductores actual en un formato de tabla limpio.
+3.  **Descarga Directa:** El método debe concluir llamando a `doc.save('liquidacion-perene.pdf')` para iniciar la descarga nativa en el navegador del usuario de forma inmediata y transparente, garantizando una ejecución 100% interactiva ante el jurado.
+
+---
+
+## ⚠️ 3. REGLA DE NOMENCLATURA OPERATIVA
+*   Recuerda omitir por completo el término "Mock" o "Simulado" en todo el código.
+*   Los botones de acción de la tabla (`[Cerrar Pago]` / `[Ver Detalle]`) deben mantener su interactividad transmutando los badges de estado en tiempo real.
+
+
+
+
+
+# 🚨 REESTRUCTURACIÓN DE COMPONENTES Y LÓGICA: ROL ADMINISTRADOR (AntiGravity)
+
+Debes aplicar de forma estricta los siguientes cambios de limpieza, eliminación de secciones y programación transaccional en el módulo de Administrador 
+
+⚠️ **REGLA DE CONVERGENCIA:** Queda prohibido escribir la palabra "Mock" o "Simulado". Si la API de producción no está disponible, el sistema debe operar en memoria con datos consistentes de forma totalmente transparente para el usuario.
+
+---
+
+## 🗑️ 1. DEPURACIÓN DE MENÚS Y BOTONES REDUNDANTES
+
+*   **Eliminación de Secciones Innecesarias :** Borra por completo del Sidebar Izquierdo las opciones de **`Empresas`** y **`Configuración`**. El sistema ya no las necesita ni las renderizará.
+*   **Remoción de Botones Duplicados:** En la sección interna de **Guías** , elimina definitivamente los botones superiores redundantes de `[📥 Exportar Excel]` y `[+ Nueva guía]`. Las únicas acciones de cabecera válidas serán las globales que ya residen en la barra superior del Top Bar general del sistema.
+
+---
+
+## 📋 2. CORRECCIÓN DE DATA COMPROMETIDA (`undefined` / VACÍOS)
+
+### En la Sección "Gestión de Guías" (`image_5f8ec0.png`) y "Panel de Control" (`image_916dfc.png`)
+*   **Limpieza de Datos:** Elimina del mapeo de las tablas cualquier texto roto que diga `Cond-undefined`, `C-` o campos en blanco en las columnas de **Fecha**, **Contenedor** y **Ruta**.
+*   **Población de Datos Reales (Mínimo 15 Registros):** Alimenta la vista con al menos 15 registros consistentes con o sin API. Cada fila debe poseer datos realistas y variados:
+    *   *ID Guía:* `GR-2026-0847`, `GR-2026-0846`, `MIT-53453`, etc.
+    *   *Conductor / Placa:* R. Huanca (`ABC-123`), J. Quispe (`DEF-456`), C. Flores (`GHI-789`), M. Torres (`JKL-012`).
+    *   *Contenedores y Precintos:* Códigos alfanuméricos válidos (Ej: `TCKU3456789`, `MSDU9871234`).
+    *   *Rutas Variadas:* `Almacén Gambetta → APM Terminals`, `DP World → Almacén Lurín`.
+*   **Estados Diversificados:** Los tags de la columna `ESTADO` deben distribuirse de manera equitativa entre los diferentes estados del negocio para demostrar la flexibilidad del software: **`PENDIENTE`**, **`EN TRÁNSITO`**, **`ENTREGADO`** y **`OBSERVADO`**.
+
+---
+
+## 🛠️ 3. INTERACTIVIDAD CRUD Y BÚSQUEDA POR FILTROS
+
+### Gestión de Guías 
+*   **Acciones de Fila Operativas:** Los botones de la columna `ACCIONES` (iconos de Ojo, Lápiz y Tacho) deben ser completamente funcionales:
+    *   *Eliminar (Tacho):* Debe ejecutar un filtrado que remueva el registro del estado en memoria inmediatamente y actualice el contador de guías encontradas en tiempo real.
+    *   *Agregar Nuevas Guías:* El formulario de nueva guía debe inyectar el elemento de forma reactiva al inicio de la tabla maestro de guías globales y actualizar los gráficos del panel de control.
+*   **Buscador e Inputs de Filtrado:** La barra de búsqueda por texto y los cuatro dropdowns de la derecha (`Conductor`, `Empresa`, `Tipo servicio`, `Estado`) deben realizar el filtro lógico instantáneamente sobre el arreglo de datos en memoria, actualizando las filas de la tabla al cambiar de opción.
+
+### Sección Seguimiento / Trazabilidad 
+*   **Buscador ISO Interactivo:** La barra de rastreo debe responder funcionalmente con o sin API. Al ingresar un código de contenedor (como `TCKU3456789`) o dar clic sobre las sugerencias integradas, el sistema debe ocultar el estado vacío y desplegar en pantalla un Timeline histórico completo que narre los movimientos del contenedor.
+
+### Sección Conductores (
+*   **Sábana de 15 Choferes Reales:** Multiplica la cantidad de tarjetas de la vista de conductores. Inicializa en el estado local una colección de **15 conductores funcionales** con nombres, placas y estados balanceados (`ACTIVO` / `INACTIVO`).
+*   **CRUD y Búsqueda de Personal:** La caja superior de `🔍 Buscar conductor...` debe filtrar las tarjetas interactivamente por nombre o número de placa. El botón `[+ Nuevo Conductor]` e icono de edición `✏️` deben abrir modales interactivos que alteren, agreguen o modifiquen las propiedades de los choferes en el listado de inmediato.
+

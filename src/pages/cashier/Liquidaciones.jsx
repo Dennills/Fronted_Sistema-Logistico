@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getLiquidaciones, cerrarLiquidacionQuincena } from '../../services/apiService';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import {
   Calculator, FileText, CheckCircle2, AlertCircle,
   Calendar, RefreshCw, X, Eye, Download, ShieldCheck
@@ -46,11 +48,49 @@ export default function Liquidaciones() {
 
   const handleExportPDF = () => {
     setExportando(true);
+    
     setTimeout(() => {
-      setExportando(false);
-      setExportExito(true);
-      setTimeout(() => setExportExito(false), 3000);
-    }, 2000); // Simulamos 2 segundos de generación PDF
+      try {
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text(`Reporte de Liquidaciones Quincenales`, 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Período: Quincena ${filtros.quincena} - ${filtros.mes}/${filtros.anio}`, 14, 30);
+        
+        const tableColumn = ["Conductor", "Empresa", "Guías", "Base", "Bonos", "Descuentos", "Total Neto"];
+        const tableRows = [];
+
+        liquidaciones.forEach(l => {
+          const rowData = [
+            l.conductor,
+            l.empresa,
+            l.guias_contadas,
+            formatCurrency(l.tarifa_base),
+            `+${formatCurrency(l.bonos)}`,
+            `-${formatCurrency(l.descuentos)}`,
+            formatCurrency(l.total_neto)
+          ];
+          tableRows.push(rowData);
+        });
+
+        doc.autoTable({
+          head: [tableColumn],
+          body: tableRows,
+          startY: 35,
+          theme: 'striped',
+          headStyles: { fillColor: [15, 23, 42] }
+        });
+
+        doc.save(`Liquidacion_Q${filtros.quincena}_${filtros.mes}_${filtros.anio}.pdf`);
+        
+        setExportExito(true);
+        setTimeout(() => setExportExito(false), 3000);
+      } catch (err) {
+        setErrorMsg('Error al generar el PDF.');
+      } finally {
+        setExportando(false);
+      }
+    }, 500);
   };
 
   const handleCerrarQuincena = async (e, id) => {

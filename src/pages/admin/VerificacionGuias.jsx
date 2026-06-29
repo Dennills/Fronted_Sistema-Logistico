@@ -1,310 +1,223 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getGuias, verificarGuia, updateEstadoGuia } from '../../services/apiService';
-import {
-  ShieldCheck, Clock, Search, RefreshCw,
-  Package, TrendingUp, Filter, AlertTriangle, Wifi, XCircle, FileSearch, Route
-} from 'lucide-react';
+import { getGuias, getConductores, updateEstadoGuia } from '../../services/apiService';
+import { Search, Download, Plus, Eye, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function VerificacionGuias() {
   const { user } = useAuth();
+  const [guias, setGuias] = useState([]);
+  const [conductores, setConductores] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [guias, setGuias]               = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [busqueda, setBusqueda]         = useState('');
-  const [filtroEstado, setFiltroEstado] = useState('todos');
-  const [errorInfo, setErrorInfo]       = useState(null);
-
-  // Estados para Trazabilidad
-  const [busquedaContenedor, setBusquedaContenedor] = useState('');
-  const [timelineContenedor, setTimelineContenedor] = useState(null);
-
-  async function fetchGuias() {
-    setLoading(true);
-    setErrorInfo(null);
-    try {
-      const res = await getGuias({ rolid: 1 });
-      const raw = res.data;
-      let list = [];
-      if (Array.isArray(raw)) list = raw;
-      else if (raw && typeof raw === 'object') {
-        const found = Object.values(raw).find(v => Array.isArray(v));
-        list = found || [];
-      }
-      setGuias(list.map(g => ({ ...g, _verificando: false, _anulando: false })));
-    } catch (err) {
-      setErrorInfo({ message: err.message || 'Error al conectar' });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchGuias();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleVerify = async (guiaid) => {
-    setGuias(prev => prev.map(g => g.id === guiaid || g.guiaid === guiaid ? { ...g, _verificando: true } : g));
-    try {
-      const verificadorId = user?.usuarioid || 1;
-      await verificarGuia(guiaid, verificadorId, 1);
-      setGuias(prev => prev.map(g =>
-        g.id === guiaid || g.guiaid === guiaid
-          ? { ...g, _verificando: false, vehiculoverificado: true, anulada: false }
-          : g
-      ));
-    } catch (err) {
-      setGuias(prev => prev.map(g => g.id === guiaid || g.guiaid === guiaid ? { ...g, _verificando: false } : g));
-      alert(`Error al verificar`);
-    }
-  };
-
-  const handleAnular = async (guiaid) => {
-    const motivo = window.prompt("Por favor, ingrese el motivo de la anulación:");
-    if (!motivo || motivo.trim() === "") {
-      alert("El motivo es obligatorio para anular.");
-      return;
-    }
-
-    setGuias(prev => prev.map(g => g.id === guiaid || g.guiaid === guiaid ? { ...g, _anulando: true } : g));
-    try {
-      await updateEstadoGuia(guiaid, 'ANULADA', motivo);
-      setGuias(prev => prev.map(g =>
-        g.id === guiaid || g.guiaid === guiaid
-          ? { ...g, _anulando: false, anulada: true, motivoanulacion: motivo, vehiculoverificado: false }
-          : g
-      ));
-    } catch (err) {
-      setGuias(prev => prev.map(g => g.id === guiaid || g.guiaid === guiaid ? { ...g, _anulando: false } : g));
-      alert(`Error al anular`);
-    }
-  };
-
-  const buscarTrazabilidad = (e) => {
-    e.preventDefault();
-    if (!busquedaContenedor.trim()) {
-      setTimelineContenedor(null);
-      return;
-    }
-    const historial = guias.filter(g => 
-      (g.contenedor?.numerocontenedor || '').toLowerCase() === busquedaContenedor.toLowerCase().trim()
-    ).sort((a, b) => new Date(b.fecharegistro || b.fechaservicio) - new Date(a.fecharegistro || a.fechaservicio));
-    
-    setTimelineContenedor(historial);
-  };
-
-  // KPIs
-  const totalGuias       = guias.length;
-  const totalPendientes  = guias.filter(g => !g.vehiculoverificado && !g.anulada).length;
-  const totalVerificadas = guias.filter(g => g.vehiculoverificado).length;
-  const totalAnuladas    = guias.filter(g => g.anulada).length;
-
-  const guiasFiltradas = guias.filter(g => {
-    const t = busqueda.toLowerCase();
-    const matchBusqueda = !t
-      || (g.numeroguia || '').toLowerCase().includes(t)
-      || String(g.empresaid || '').includes(t)
-      || (g.contenedor?.numerocontenedor || '').toLowerCase().includes(t);
-    const matchEstado =
-      filtroEstado === 'todos' ||
-      (filtroEstado === 'pendiente'  && !g.vehiculoverificado && !g.anulada) ||
-      (filtroEstado === 'verificado' && g.vehiculoverificado) ||
-      (filtroEstado === 'anulada' && g.anulada);
-    return matchBusqueda && matchEstado;
+  const [filtros, setFiltros] = useState({
+    busqueda: '', conductor: '', empresa: '', tipo: '', estado: ''
   });
 
-  const getNumCont = (g) => g.contenedor?.numerocontenedor || null;
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [resGuias, resCond] = await Promise.all([
+          getGuias({ rolid: 1 }),
+          getConductores()
+        ]);
+        
+        let list = [];
+        if (Array.isArray(resGuias.data)) list = resGuias.data;
+        else if (resGuias.data?.guias) list = resGuias.data.guias;
+        
+        setGuias(list);
+        setConductores(resCond);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const getCondName = (id) => {
+    const c = conductores.find(x => x.id == id);
+    return c ? c.nombre : `Cond-${id}`;
+  };
+
+  const handleDelete = async (id) => {
+    if(window.confirm('¿Está seguro de eliminar esta guía?')) {
+      await updateEstadoGuia(id, 'ANULADA', 'Eliminado por Admin');
+      setGuias(prev => prev.map(g => g.id === id || g.guiaid === id ? { ...g, anulada: true } : g));
+    }
+  };
+
+  const filteredGuias = guias.filter(g => {
+    const term = filtros.busqueda.toLowerCase();
+    const matchBusqueda = !term || 
+      g.numeroguia?.toLowerCase().includes(term) || 
+      g.contenedor?.numerocontenedor?.toLowerCase().includes(term);
+    
+    const matchCond = !filtros.conductor || g.conductorid == filtros.conductor;
+    const matchEmp = !filtros.empresa || g.empresaid == filtros.empresa;
+    const matchTipo = !filtros.tipo || g.tipo_servicio === filtros.tipo;
+    const matchEstado = !filtros.estado || 
+      (filtros.estado === 'PENDIENTE' && !g.vehiculoverificado && !g.anulada) ||
+      (filtros.estado === 'VALIDADA' && g.vehiculoverificado) ||
+      (filtros.estado === 'ANULADA' && g.anulada);
+
+    return matchBusqueda && matchCond && matchEmp && matchTipo && matchEstado;
+  });
+
+  const totalPages = Math.ceil(filteredGuias.length / itemsPerPage);
+  const currentGuias = filteredGuias.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
-    <div className="p-4 md:p-8 bg-slate-50 min-h-screen">
+    <div className="p-8 max-w-[1400px] mx-auto">
       
-      {/* Header */}
-      <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Subheader */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-            <ShieldCheck className="w-8 h-8 text-slate-400" /> Control Global Administrativo
-          </h1>
-          <p className="text-slate-500 mt-1">Monitoreo, Trazabilidad y Validación de Guías</p>
+          <h1 className="text-2xl font-bold text-slate-900">Gestión de guías</h1>
+          <p className="text-slate-500 font-medium mt-1">{filteredGuias.length} guías encontradas</p>
         </div>
-        <button onClick={fetchGuias} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all shadow-md">
-          <RefreshCw className="w-4 h-4" /> Actualizar Datos
-        </button>
-      </div>
-
-      {/* Trazabilidad de Contenedor */}
-      <div className="max-w-7xl mx-auto bg-white rounded-3xl border border-slate-200 shadow-sm p-6 mb-8">
-        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-          <FileSearch className="w-5 h-5 text-blue-500" /> Trazabilidad de Contenedor
-        </h2>
-        
-        <form onSubmit={buscarTrazabilidad} className="flex gap-3 max-w-2xl">
-          <input
-            type="text"
-            placeholder="Ingrese código de contenedor (Ej. HLXU1234567)"
-            value={busquedaContenedor}
-            onChange={e => setBusquedaContenedor(e.target.value)}
-            className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500 uppercase transition-all"
-          />
-          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-sm">
-            Buscar Historial
+        <div className="flex gap-3">
+          <button className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 rounded-xl px-4 py-2 hover:bg-slate-50 shadow-sm transition-all">
+            <Download className="w-4 h-4" /> Exportar Excel
           </button>
-        </form>
-
-        {timelineContenedor && (
-          <div className="mt-6 p-5 bg-slate-50 rounded-2xl border border-slate-100">
-            <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-              <Route className="w-4 h-4 text-slate-400" /> Línea de tiempo para: <span className="text-blue-600 uppercase">{busquedaContenedor}</span>
-            </h3>
-            
-            {timelineContenedor.length === 0 ? (
-              <p className="text-slate-500 text-sm">No se encontraron registros para este contenedor.</p>
-            ) : (
-              <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
-                {timelineContenedor.map((g, index) => (
-                  <div key={index} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-blue-500 text-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
-                      <TruckIcon className="w-4 h-4" />
-                    </div>
-                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-bold text-slate-800">{g.numeroguia || `G-${g.id}`}</span>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${g.anulada ? 'bg-red-100 text-red-700' : g.vehiculoverificado ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {g.anulada ? 'ANULADA' : g.vehiculoverificado ? 'VALIDADA' : 'PENDIENTE'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 font-medium">{g.fechaservicio}</p>
-                      <p className="text-sm mt-2 text-slate-600">ID Conductor: <span className="font-bold">{g.conductorid}</span></p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          <button className="flex items-center gap-2 text-sm font-bold text-white bg-blue-600 rounded-xl px-4 py-2 hover:bg-blue-700 shadow-md transition-all">
+            <Plus className="w-4 h-4" /> Nueva guía
+          </button>
+        </div>
       </div>
 
-      <div className="max-w-7xl mx-auto">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-sm">
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Total Registradas</p>
-            <p className="text-4xl font-bold">{loading ? '…' : totalGuias}</p>
-          </div>
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-            <p className="text-amber-500 text-xs font-bold uppercase tracking-wider mb-2">Pendientes</p>
-            <p className="text-4xl font-bold text-slate-900">{loading ? '…' : totalPendientes}</p>
-          </div>
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-            <p className="text-emerald-500 text-xs font-bold uppercase tracking-wider mb-2">Validadas</p>
-            <p className="text-4xl font-bold text-slate-900">{loading ? '…' : totalVerificadas}</p>
-          </div>
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-            <p className="text-red-500 text-xs font-bold uppercase tracking-wider mb-2">Anuladas</p>
-            <p className="text-4xl font-bold text-slate-900">{loading ? '…' : totalAnuladas}</p>
-          </div>
+      {/* Barra de Filtrado Avanzado */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4 items-center">
+        <div className="relative w-full md:w-[60%]">
+          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Buscar por ID, contenedor o ruta..."
+            value={filtros.busqueda}
+            onChange={(e) => setFiltros({...filtros, busqueda: e.target.value})}
+            className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+          />
         </div>
+        <div className="flex w-full md:w-[40%] gap-3">
+          <select value={filtros.conductor} onChange={e => setFiltros({...filtros, conductor: e.target.value})} className="flex-1 bg-white border border-slate-200 text-sm font-semibold text-slate-600 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Conductor ∨</option>
+            {conductores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          <select value={filtros.empresa} onChange={e => setFiltros({...filtros, empresa: e.target.value})} className="flex-1 bg-white border border-slate-200 text-sm font-semibold text-slate-600 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Empresa ∨</option>
+            <option value="1">Perene</option>
+            <option value="2">GKO</option>
+            <option value="3">Pao Cargo</option>
+            <option value="4">Elam</option>
+          </select>
+          <select value={filtros.tipo} onChange={e => setFiltros({...filtros, tipo: e.target.value})} className="flex-1 bg-white border border-slate-200 text-sm font-semibold text-slate-600 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Tipo servicio ∨</option>
+            <option value="EMBARQUE">Embarque</option>
+            <option value="DESCARGA">Descarga</option>
+          </select>
+          <select value={filtros.estado} onChange={e => setFiltros({...filtros, estado: e.target.value})} className="flex-1 bg-white border border-slate-200 text-sm font-semibold text-slate-600 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Estado ∨</option>
+            <option value="PENDIENTE">Pendiente</option>
+            <option value="VALIDADA">Validada</option>
+            <option value="ANULADA">Anulada</option>
+          </select>
+        </div>
+      </div>
 
-        {/* Tabla */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-100 flex flex-wrap gap-4 items-center justify-between bg-slate-50">
-            <div className="relative flex-1 min-w-[250px]">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text" value={busqueda} onChange={e => setBusqueda(e.target.value)}
-                placeholder="Buscar por guía o contenedor..."
-                className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"
-              />
-            </div>
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1">
-              {['todos', 'pendiente', 'verificado', 'anulada'].map(f => (
-                <button key={f} onClick={() => setFiltroEstado(f)}
-                  className={`text-xs font-bold px-4 py-2 rounded-lg transition-all capitalize ${
-                    filtroEstado === f ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'
+      {/* Tabla Maestra Principal */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">ID Guía</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Fecha</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Conductor / Placa</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Contenedor</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Ruta</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Empresa</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Tipo</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">Estado</th>
+                <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {currentGuias.map(g => (
+                <tr key={g.id || g.guiaid} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-4 px-6 font-bold text-blue-600 cursor-pointer hover:underline">{g.numeroguia}</td>
+                  <td className="py-4 px-6 text-sm text-slate-600 font-medium">{g.fechaservicio}</td>
+                  <td className="py-4 px-6">
+                    <p className="font-bold text-slate-900">{getCondName(g.conductorid)}</p>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">ABC-123</p>
+                  </td>
+                  <td className="py-4 px-6">
+                    <code className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded-md border border-slate-200">{g.contenedor?.numerocontenedor}</code>
+                  </td>
+                  <td className="py-4 px-6">
+                    <p className="text-xs text-slate-500 font-medium">{g.origen}</p>
+                    <p className="text-sm text-slate-800 font-bold mt-0.5">→ {g.destino}</p>
+                  </td>
+                  <td className="py-4 px-6 text-sm font-semibold text-slate-600">Empresa {g.empresaid}</td>
+                  <td className="py-4 px-6">
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-1 rounded-md">{g.tipo_servicio}</span>
+                  </td>
+                  <td className="py-4 px-6 text-center">
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      g.anulada ? 'bg-red-100 text-red-700 border border-red-200' :
+                      g.vehiculoverificado ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-amber-100 text-amber-700 border border-amber-200'
+                    }`}>
+                      {g.anulada ? 'ANULADA' : g.vehiculoverificado ? 'VALIDADA' : 'PENDIENTE'}
+                    </span>
+                  </td>
+                  <td className="py-4 px-6">
+                    <div className="flex items-center justify-end gap-1 text-slate-400">
+                      <button className="p-2 hover:bg-slate-100 hover:text-blue-600 rounded-lg transition-colors" title="Ver"><Eye className="w-4 h-4" /></button>
+                      <button className="p-2 hover:bg-slate-100 hover:text-amber-600 rounded-lg transition-colors" title="Editar"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDelete(g.id || g.guiaid)} className="p-2 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {currentGuias.length === 0 && !loading && (
+                <tr><td colSpan="9" className="py-12 text-center text-slate-500 font-medium">No se encontraron resultados</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        {/* Paginación */}
+        <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-white">
+          <span className="text-sm font-medium text-slate-500">
+            {filteredGuias.length > 0 ? `${(currentPage - 1) * itemsPerPage + 1}-${Math.min(currentPage * itemsPerPage, filteredGuias.length)} de ${filteredGuias.length}` : '0 de 0'}
+          </span>
+          <div className="flex items-center gap-1">
+            <button 
+              disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}
+              className="p-1.5 border border-slate-200 rounded-lg text-slate-400 hover:bg-slate-50 disabled:opacity-50"
+            ><ChevronLeft className="w-4 h-4" /></button>
+            
+            <div className="flex items-center gap-1 mx-2">
+              {[...Array(totalPages)].map((_, i) => (
+                <button 
+                  key={i} onClick={() => setCurrentPage(i+1)}
+                  className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold transition-colors ${
+                    currentPage === i + 1 ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                   }`}
-                >{f}</button>
+                >{i + 1}</button>
               ))}
             </div>
-          </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-white border-b border-slate-200">
-                  <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Documento</th>
-                  <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Contenedor</th>
-                  <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Fecha / Chofer</th>
-                  <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">Estado</th>
-                  <th className="py-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {guiasFiltradas.length === 0 ? (
-                  <tr><td colSpan="5" className="py-20 text-center text-slate-400">
-                    <Wifi className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-lg font-medium">No se encontraron guías</p>
-                  </td></tr>
-                ) : guiasFiltradas.map(g => (
-                  <tr key={g.id || g.guiaid} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6">
-                      <p className="font-bold text-slate-900">{g.numeroguia || `G-${g.id}`}</p>
-                      <p className="text-xs text-slate-400">ID #{g.id || g.guiaid}</p>
-                      {g.motivoanulacion && (
-                        <p className="text-xs text-red-500 mt-1 italic max-w-[200px] truncate">Motivo: {g.motivoanulacion}</p>
-                      )}
-                    </td>
-                    <td className="py-4 px-6">
-                      {getNumCont(g)
-                        ? <code className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded-md">{getNumCont(g)}</code>
-                        : <span className="text-xs text-slate-400">N/A</span>
-                      }
-                    </td>
-                    <td className="py-4 px-6">
-                      <p className="text-sm text-slate-700">{g.fechaservicio}</p>
-                      <p className="text-xs text-slate-500">Conductor: {g.conductorid}</p>
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-                        g.anulada ? 'bg-red-100 text-red-700' :
-                        g.vehiculoverificado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {g.anulada ? 'ANULADA' : g.vehiculoverificado ? 'VALIDADA' : 'PENDIENTE'}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      {!g.vehiculoverificado && !g.anulada ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => handleVerify(g.id || g.guiaid)} disabled={g._verificando}
-                            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg text-xs transition-colors shadow-sm disabled:opacity-50"
-                          >
-                            {g._verificando ? '...' : 'Verificar'}
-                          </button>
-                          <button onClick={() => handleAnular(g.id || g.guiaid)} disabled={g._anulando}
-                            className="bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2 px-4 rounded-lg text-xs transition-colors disabled:opacity-50"
-                          >
-                            {g._anulando ? '...' : 'Anular'}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 font-bold">{g.anulada ? 'Bloqueado' : 'Completado'}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <button 
+              disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(prev => prev + 1)}
+              className="p-1.5 border border-slate-200 rounded-lg text-slate-400 hover:bg-slate-50 disabled:opacity-50"
+            ><ChevronRight className="w-4 h-4" /></button>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-const TruckIcon = (props) => (
-  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="16" height="12" x="2" y="8" rx="2.5" />
-    <path d="M18 12.5V8a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v4.5" />
-    <circle cx="6.5" cy="18.5" r="1.5" />
-    <circle cx="17.5" cy="18.5" r="1.5" />
-  </svg>
-);

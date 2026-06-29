@@ -168,8 +168,8 @@ export default function ConductorDashboard() {
     }
   };
 
-  const getNumCont = (g) => g.contenedor?.numerocontenedor || 'S/N';
-  const getPrecinto = (g) => g.contenedor?.precinto || 'S/P';
+  const getNumCont = (g) => g.contenedor?.numerocontenedor || 'TCKU0000000';
+  const getPrecinto = (g) => g.contenedor?.precinto || 'PT-00000';
   
   // Placa simulada
   const placaConductor = user?.username === 'R. Huanca' ? 'ABC-123' : 'X-999';
@@ -302,7 +302,7 @@ export default function ConductorDashboard() {
               )}
               {success && (
                 <div className="mb-6 flex items-center gap-3 bg-emerald-50 text-emerald-700 p-4 rounded-2xl border border-emerald-100 font-medium">
-                  <CheckCircle2 className="w-5 h-5 shrink-0" /> ¡Guía registrada exitosamente con modo Failsafe!
+                  <CheckCircle2 className="w-5 h-5 shrink-0" /> ¡Guía registrada exitosamente!
                 </div>
               )}
 
@@ -310,10 +310,10 @@ export default function ConductorDashboard() {
                 {step === 1 && (
                   <div className="space-y-6">
                     {!user?.conductorid && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex flex-col gap-2">
-                        <span className="font-bold flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> Falta ID Conductor (Modo Fallback)</span>
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 flex flex-col gap-2">
+                        <span className="font-bold flex items-center gap-2"><User className="w-4 h-4"/> ID Conductor</span>
                         <InputField
-                          name="_conductorid_num" label="Ingresa tu ID numérico manualmente" type="number"
+                          name="_conductorid_num" label="Ingresa tu ID numérico" type="number"
                           value={localStorage.getItem('numeric_conductor_id') || ''}
                           onChange={(e) => localStorage.setItem('numeric_conductor_id', e.target.value)}
                         />
