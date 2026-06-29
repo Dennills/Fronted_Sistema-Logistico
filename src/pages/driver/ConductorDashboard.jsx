@@ -1,28 +1,38 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { crearGuia, getGuias } from '../../services/apiService';
+import { crearGuia, getGuias, getAuxiliares } from '../../services/apiService';
 import {
   CheckCircle2, ChevronRight, AlertCircle, ArrowLeft,
   Truck, Package, ClipboardList, RefreshCw, AlertTriangle,
+  Calendar, MapPin, Hash, User
 } from 'lucide-react';
 
-// ─── CRÍTICO: InputField FUERA del componente para evitar pérdida de foco ───
-const InputField = ({ name, label, type = 'text', placeholder, value, onChange }) => (
-  <div>
-    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</label>
-    <input
-      type={type} name={name} value={value} onChange={onChange}
-      placeholder={placeholder} autoComplete="off"
-      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-slate-900 transition-all"
-    />
+const InputField = ({ name, label, type = 'text', placeholder, value, onChange, options = null }) => (
+  <div className="w-full">
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{label}</label>
+    {options ? (
+      <select
+        name={name} value={value} onChange={onChange}
+        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-slate-900 transition-all"
+      >
+        <option value="">Seleccione...</option>
+        {options.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+      </select>
+    ) : (
+      <input
+        type={type} name={name} value={value} onChange={onChange}
+        placeholder={placeholder} autoComplete="off"
+        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-slate-900 transition-all"
+      />
+    )}
   </div>
 );
 
 const FORM_INICIAL = {
-  numeroguia: '', empresaid: '', vehiculoid: '', tiposervicioid: '',
-  origenid: '', destinoid: '', fechaservicio: '', pesotoneladas: '',
+  numeroguia: '', empresaid: '', vehiculoid: '1', tiposervicioid: '',
+  origenid: '1', destinoid: '2', fechaservicio: new Date().toISOString().split('T')[0], pesotoneladas: '',
   numerocontenedor: '', precinto: '', tamanioid: '', pesokg: '',
-  terminalid: '', estadocontenedorid: '',
+  terminalid: '1', estadocontenedorid: '1',
 };
 
 function normalizeList(raw) {
@@ -42,37 +52,39 @@ export default function ConductorDashboard() {
   const [errorMsg, setErrorMsg] = useState('');
   const [success, setSuccess]   = useState(false);
   const [sending, setSending]   = useState(false);
-  const [vistaActiva, setVistaActiva] = useState('historial'); // ← Abre HISTORIAL por defecto
+  const [vistaActiva, setVistaActiva] = useState('historial');
 
   const [misGuias, setMisGuias]             = useState([]);
-  const [loadingGuias, setLoadingGuias]     = useState(true); // ← true desde el inicio
+  const [loadingGuias, setLoadingGuias]     = useState(true);
   const [errorGuias, setErrorGuias]         = useState(null);
+  const [auxiliares, setAuxiliares]         = useState(null);
 
-  // ── Carga automática al montar el componente ──────────────────
   async function cargarMisGuias() {
     setLoadingGuias(true);
     setErrorGuias(null);
     try {
-      // IMPORTANTE: el ID del conductor en Supabase es un UUID (string),
-      // pero la API espera conductorid como entero.
-      // Solución: llamar sin conductorid — el backend usa el token JWT
-      // para identificar al conductor y filtrar sus guías.
-      const res = await getGuias({});
-      setMisGuias(normalizeList(res.data));
+      const conductorId = user?.conductorid || parseInt(localStorage.getItem('numeric_conductor_id') || '1', 10);
+      const params = { rolid: 3, conductorid: conductorId };
+      const res = await getGuias(params);
+      setMisGuias(normalizeList(res.data?.guias || res.data));
     } catch (err) {
-      const status = err.response?.status;
-      let msg = 'No se pudo cargar tus guías.';
-      if (status === 401) msg = 'Sesión expirada. Vuelve a iniciar sesión.';
-      else if (status === 403) msg = 'Sin permiso para ver guías.';
-      else if (!err.response)  msg = 'Sin conexión al servidor.';
-      setErrorGuias(msg);
+      setErrorGuias(err.message || 'Error al cargar guías.');
     } finally {
       setLoadingGuias(false);
     }
   }
 
-  // Cargar historial automáticamente al entrar al módulo
+  async function cargarCatalogos() {
+    try {
+      const aux = await getAuxiliares();
+      setAuxiliares(aux);
+    } catch (e) {
+      console.warn("Error cargando catálogos", e);
+    }
+  }
+
   useEffect(() => {
+    cargarCatalogos();
     cargarMisGuias();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -89,18 +101,18 @@ export default function ConductorDashboard() {
   }, []);
 
   const validateStep1 = () => {
-    const campos = ['numeroguia', 'empresaid', 'vehiculoid', 'tiposervicioid', 'origenid', 'destinoid', 'fechaservicio', 'pesotoneladas'];
+    const campos = ['numeroguia', 'empresaid', 'tiposervicioid', 'fechaservicio', 'pesotoneladas'];
     if (campos.some(k => !formData[k]?.toString().trim())) {
-      setErrorMsg('Completa todos los campos del Paso 1 para continuar.');
+      setErrorMsg('Completa todos los campos obligatorios del Paso 1.');
       return false;
     }
     return true;
   };
 
   const validateStep2 = () => {
-    const campos = ['numerocontenedor', 'precinto', 'tamanioid', 'pesokg', 'terminalid', 'estadocontenedorid'];
+    const campos = ['numerocontenedor', 'precinto', 'tamanioid', 'pesokg'];
     if (campos.some(k => !formData[k]?.toString().trim())) {
-      setErrorMsg('Completa todos los datos del contenedor antes de enviar.');
+      setErrorMsg('Completa los datos del contenedor.');
       return false;
     }
     return true;
@@ -114,15 +126,12 @@ export default function ConductorDashboard() {
     setSending(true);
     setErrorMsg('');
 
-    // user.id del JWT de Supabase es un UUID (string).
-    // La API necesita conductorid e registradopor como enteros.
-    // Si no tenemos el ID numérico guardado, usamos 1 como fallback temporal.
-    // TODO: cuando el backend devuelva el id numérico en el login, actualizar aquí.
-    const numericId = parseInt(localStorage.getItem('numeric_conductor_id') || '1', 10);
+    const conductorid_num = user?.conductorid || parseInt(localStorage.getItem('numeric_conductor_id') || '1', 10);
+    const usuarioid_num   = user?.usuarioid   || parseInt(localStorage.getItem('usuarioid')   || '1', 10);
 
     const payload = {
       numeroguia:     formData.numeroguia.trim(),
-      conductorid:    numericId,
+      conductorid:    conductorid_num,
       vehiculoid:     parseInt(formData.vehiculoid),
       empresaid:      parseInt(formData.empresaid),
       tiposervicioid: parseInt(formData.tiposervicioid),
@@ -131,7 +140,7 @@ export default function ConductorDashboard() {
       pesotoneladas:  parseFloat(formData.pesotoneladas),
       estadoid:       1,
       fechaservicio:  formData.fechaservicio,
-      registradopor:  numericId,
+      registradopor:  usuarioid_num,
       contenedor: {
         numerocontenedor:   formData.numerocontenedor.trim(),
         precinto:           formData.precinto.trim(),
@@ -147,105 +156,119 @@ export default function ConductorDashboard() {
       setSuccess(true);
       setFormData(FORM_INICIAL);
       setStep(1);
-      // Recargar historial automáticamente tras crear
-      setTimeout(async () => {
+      setTimeout(() => {
         setSuccess(false);
-        await cargarMisGuias();
         setVistaActiva('historial');
-      }, 2000);
+        cargarMisGuias();
+      }, 1500);
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      if (err.response?.status === 422) {
-        setErrorMsg(`Validación: ${Array.isArray(detail) ? detail.map(d => d.msg).join(', ') : detail || 'Revisa los campos.'}`);
-      } else if (err.response?.status === 401) {
-        setErrorMsg('Sesión expirada. Por favor vuelve a iniciar sesión.');
-      } else {
-        setErrorMsg('No se pudo conectar con el servidor.');
-      }
+      setErrorMsg('No se pudo registrar la guía.');
     } finally {
       setSending(false);
     }
   };
 
-  const getNumCont = (g) =>
-    g.contenedor?.numerocontenedor || g.contenedor?.numero_contenedor ||
-    g.contenedor?.numero || g.numerocontenedor || null;
+  const getNumCont = (g) => g.contenedor?.numerocontenedor || 'S/N';
+  const getPrecinto = (g) => g.contenedor?.precinto || 'S/P';
+  
+  // Placa simulada
+  const placaConductor = user?.username === 'R. Huanca' ? 'ABC-123' : 'X-999';
 
   return (
-    <div className="min-h-screen bg-slate-50 flex justify-center py-6 px-4">
-      <div className="w-full max-w-md">
-
-        {/* Header */}
-        <div className="bg-slate-900 text-white rounded-t-2xl p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Truck className="w-5 h-5 text-slate-400" />
-            <h1 className="text-xl font-bold tracking-tight">Módulo Conductor</h1>
+    <div className="min-h-screen bg-slate-50 py-6 px-4 md:px-8">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Header Responsivo */}
+        <div className="bg-slate-900 text-white rounded-t-3xl p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Truck className="w-6 h-6 text-slate-400" />
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Panel del Conductor</h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-slate-400 text-sm">
+              <span className="flex items-center gap-1.5 bg-slate-800 px-3 py-1 rounded-full text-slate-200">
+                <User className="w-4 h-4" /> {user?.username || 'Chofer'}
+              </span>
+              <span className="flex items-center gap-1.5 bg-slate-800 px-3 py-1 rounded-full text-slate-200">
+                <Hash className="w-4 h-4" /> Placa: {placaConductor}
+              </span>
+            </div>
           </div>
-          <p className="text-slate-400 text-sm">{user?.username} · Registro de ruta</p>
+          
+          <div className="bg-slate-800 rounded-xl p-3 text-center min-w-[120px]">
+            <p className="text-xs text-slate-400 uppercase font-semibold">Guías Quincena</p>
+            <p className="text-3xl font-bold text-emerald-400">{misGuias.length}</p>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-slate-800">
+        <div className="flex bg-slate-800 overflow-x-auto no-scrollbar">
           {[
-            { id: 'historial', icon: ClipboardList, label: 'Mis Guías' },
-            { id: 'form',      icon: Package,       label: 'Nueva Guía' },
+            { id: 'historial', icon: ClipboardList, label: '📋 Mis Guías' },
+            { id: 'form',      icon: Package,       label: '➕ Registrar Nueva' },
           ].map(tab => (
             <button key={tab.id} onClick={() => handleTabChange(tab.id)}
-              className={`flex-1 py-3 text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+              className={`flex-1 min-w-[150px] py-4 text-sm md:text-base font-semibold flex items-center justify-center gap-2 transition-colors ${
                 vistaActiva === tab.id ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
               }`}
             >
-              <tab.icon className="w-4 h-4" /> {tab.label}
+              {tab.label}
             </button>
           ))}
         </div>
 
-        <div className="bg-white rounded-b-2xl shadow-sm border border-slate-100 border-t-0 p-5">
+        <div className="bg-white rounded-b-3xl shadow-sm border border-slate-100 border-t-0 p-5 md:p-8">
 
-          {/* ── HISTORIAL (tab por defecto) ── */}
+          {/* ── HISTORIAL EN GRID ── */}
           {vistaActiva === 'historial' && (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-slate-700">Mis guías registradas</h3>
-                <button onClick={cargarMisGuias}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
-                >
-                  <RefreshCw className="w-4 h-4" />
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-slate-800">Tus Rutas Registradas</h3>
+                <button onClick={cargarMisGuias} className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors">
+                  <RefreshCw className="w-5 h-5" />
                 </button>
               </div>
 
-              {errorGuias && (
-                <div className="mb-4 flex items-start gap-2 bg-red-50 text-red-700 p-3 rounded-lg border border-red-100 text-sm">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> {errorGuias}
-                </div>
-              )}
-
               {loadingGuias ? (
-                <div className="py-10 flex flex-col items-center gap-2 text-slate-400">
-                  <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-700 rounded-full animate-spin" />
-                  <span className="text-sm">Cargando guías…</span>
+                <div className="py-20 flex flex-col items-center gap-3 text-slate-400">
+                  <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                  <span className="font-medium">Cargando guías...</span>
                 </div>
               ) : misGuias.length === 0 ? (
-                <div className="py-10 text-center text-slate-400 text-sm">
-                  <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No tienes guías registradas aún.</p>
-                  <p className="text-xs mt-1">Usa "Nueva Guía" para registrar tu primera ruta.</p>
+                <div className="py-20 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <Package className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                  <p className="text-lg font-semibold text-slate-600">No tienes guías registradas.</p>
+                  <p className="text-sm mt-1">Dirígete a "Registrar Nueva" para iniciar.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {misGuias.map(g => (
-                    <div key={g.id} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{g.numeroguia || `GR-${g.id}`}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {g.fechaservicio || '—'} · {getNumCont(g) || 'Sin contenedor'}
-                        </p>
+                    <div key={g.id || g.guiaid} className="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl p-5 shadow-sm transition-all hover:shadow-md flex flex-col">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <p className="text-lg font-bold text-slate-900">{g.numeroguia || `G-${g.id}`}</p>
+                          <p className="text-xs text-slate-500 font-medium">{g.fechaservicio}</p>
+                        </div>
+                        <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${
+                          g.anulada ? 'bg-red-100 text-red-700' :
+                          g.vehiculoverificado ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {g.anulada ? 'ANULADA' : g.vehiculoverificado ? 'VALIDADA' : 'REGISTRADA'}
+                        </span>
                       </div>
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        g.vehiculoverificado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {g.vehiculoverificado ? '✓ Verificado' : '⏳ Pendiente'}
-                      </span>
+                      
+                      <div className="space-y-3 flex-1">
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <Package className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="font-semibold text-slate-800">{getNumCont(g)}</span>
+                          <span className="text-slate-400">|</span>
+                          <span className="text-xs">Precinto: {getPrecinto(g)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span>{g.pesotoneladas ? `${g.pesotoneladas} Ton` : 'Sin peso'}</span>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -253,109 +276,93 @@ export default function ConductorDashboard() {
             </div>
           )}
 
-          {/* ── FORMULARIO ── */}
+          {/* ── FORMULARIO RESPONSIVO GRID ── */}
           {vistaActiva === 'form' && (
-            <>
-              <div className="flex items-center mb-5">
+            <div className="max-w-4xl mx-auto">
+              {/* Stepper Header */}
+              <div className="flex items-center mb-8 bg-slate-50 p-2 rounded-2xl">
                 {[{ n: 1, label: 'Datos del Viaje' }, { n: 2, label: 'Contenedor' }].map(({ n, label }, i) => (
                   <React.Fragment key={n}>
-                    <div className={`flex items-center gap-1.5 ${step >= n ? 'text-slate-900' : 'text-slate-400'}`}>
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                        step >= n ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300'
-                      }`}>{n}</div>
-                      <span className="text-xs font-semibold hidden sm:block">{label}</span>
+                    <div className={`flex-1 flex flex-col md:flex-row items-center justify-center gap-2 py-3 rounded-xl transition-all ${
+                      step === n ? 'bg-white shadow-sm text-slate-900' : step > n ? 'text-emerald-600' : 'text-slate-400'
+                    }`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${
+                        step === n ? 'border-slate-900 bg-slate-900 text-white' : step > n ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-200'
+                      }`}>{step > n ? <CheckCircle2 className="w-5 h-5" /> : n}</div>
+                      <span className="text-sm font-bold">{label}</span>
                     </div>
-                    {i < 1 && <div className={`flex-1 h-0.5 mx-2 transition-all duration-500 ${step === 2 ? 'bg-slate-900' : 'bg-slate-200'}`} />}
                   </React.Fragment>
                 ))}
               </div>
 
               {errorMsg && (
-                <div className="mb-4 flex items-start gap-2 bg-red-50 text-red-700 p-3 rounded-lg border border-red-100 text-sm">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> {errorMsg}
+                <div className="mb-6 flex items-center gap-3 bg-red-50 text-red-700 p-4 rounded-2xl border border-red-100 font-medium">
+                  <AlertCircle className="w-5 h-5 shrink-0" /> {errorMsg}
                 </div>
               )}
               {success && (
-                <div className="mb-4 flex items-start gap-2 bg-emerald-50 text-emerald-700 p-3 rounded-lg border border-emerald-100 text-sm">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> ¡Guía registrada! Redirigiendo al historial…
+                <div className="mb-6 flex items-center gap-3 bg-emerald-50 text-emerald-700 p-4 rounded-2xl border border-emerald-100 font-medium">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" /> ¡Guía registrada exitosamente con modo Failsafe!
                 </div>
               )}
 
               <form onSubmit={step === 2 ? handleSubmit : (e) => { e.preventDefault(); nextStep(); }}>
                 {step === 1 && (
-                  <div className="space-y-3">
-                    {/* Aviso sobre el ID numérico del conductor */}
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
-                      ⚠️ <strong>ID Conductor numérico:</strong> Ingresa el ID entero de tu cuenta en la tabla <code>conductores</code> de la base de datos (no el UUID de Supabase).
+                  <div className="space-y-6">
+                    {!user?.conductorid && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex flex-col gap-2">
+                        <span className="font-bold flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> Falta ID Conductor (Modo Fallback)</span>
+                        <InputField
+                          name="_conductorid_num" label="Ingresa tu ID numérico manualmente" type="number"
+                          value={localStorage.getItem('numeric_conductor_id') || ''}
+                          onChange={(e) => localStorage.setItem('numeric_conductor_id', e.target.value)}
+                        />
+                      </div>
+                    )}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <InputField name="numeroguia" label="N° Guía Transportista" placeholder="Ej. T001-000456" value={formData.numeroguia} onChange={handleChange} />
+                      <InputField name="empresaid" label="Empresa" value={formData.empresaid} onChange={handleChange} options={auxiliares?.empresas} />
                     </div>
-                    <InputField
-                      name="_conductorid_num"
-                      label="Mi ID de Conductor (numérico)"
-                      placeholder="Ej. 1, 2, 3..."
-                      type="number"
-                      value={localStorage.getItem('numeric_conductor_id') || ''}
-                      onChange={(e) => {
-                        localStorage.setItem('numeric_conductor_id', e.target.value);
-                        // Forzar re-render sin usar state para no perder foco
-                        document.getElementById('conductor-id-display').textContent = e.target.value || '—';
-                      }}
-                    />
-                    <p className="text-xs text-slate-400">
-                      ID guardado: <span id="conductor-id-display" className="font-semibold text-slate-600">{localStorage.getItem('numeric_conductor_id') || '—'}</span>
-                    </p>
-                    <InputField name="numeroguia"    label="N° Guía Transportista"  placeholder="Ej. T001-000456"     value={formData.numeroguia}    onChange={handleChange} />
-                    <InputField name="empresaid"     label="ID Empresa"             placeholder="Ej. 1"               value={formData.empresaid}     onChange={handleChange} type="number" />
-                    <div className="grid grid-cols-2 gap-3">
-                      <InputField name="vehiculoid"     label="ID Vehículo"    placeholder="Ej. 1"           value={formData.vehiculoid}     onChange={handleChange} type="number" />
-                      <InputField name="tiposervicioid" label="ID Tipo Serv."  placeholder="1=Lleno 2=Vacío" value={formData.tiposervicioid} onChange={handleChange} type="number" />
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <InputField name="tiposervicioid" label="Tipo de Servicio" value={formData.tiposervicioid} onChange={handleChange} options={auxiliares?.servicios} />
+                      <InputField name="fechaservicio" label="Fecha Servicio" value={formData.fechaservicio} onChange={handleChange} type="date" />
+                      <InputField name="pesotoneladas" label="Peso (Toneladas)" placeholder="Ej. 5.5" value={formData.pesotoneladas} onChange={handleChange} type="number" />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <InputField name="origenid"  label="ID Origen"  placeholder="Ej. 1" value={formData.origenid}  onChange={handleChange} type="number" />
-                      <InputField name="destinoid" label="ID Destino" placeholder="Ej. 2" value={formData.destinoid} onChange={handleChange} type="number" />
+
+                    <div className="flex justify-end pt-4">
+                      <button type="button" onClick={nextStep} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-8 rounded-xl flex items-center gap-2 active:scale-95 transition-all w-full md:w-auto">
+                        Continuar al Contenedor <ChevronRight className="w-5 h-5" />
+                      </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <InputField name="fechaservicio" label="Fecha Servicio"    value={formData.fechaservicio}  onChange={handleChange} type="date" />
-                      <InputField name="pesotoneladas" label="Peso (Toneladas)"  placeholder="Ej. 5.5"          value={formData.pesotoneladas} onChange={handleChange} type="number" />
-                    </div>
-                    <button type="button" onClick={nextStep}
-                      className="w-full mt-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                    >
-                      Siguiente <ChevronRight className="w-4 h-4" />
-                    </button>
                   </div>
                 )}
 
                 {step === 2 && (
-                  <div className="space-y-3">
-                    <InputField name="numerocontenedor" label="N° Contenedor"         placeholder="Ej. HLXU4521098" value={formData.numerocontenedor} onChange={handleChange} />
-                    <InputField name="precinto"         label="Precinto de Seguridad" placeholder="Ej. PREC-12345"  value={formData.precinto}         onChange={handleChange} />
-                    <div className="grid grid-cols-2 gap-3">
-                      <InputField name="tamanioid" label="ID Tamaño"   placeholder="1=20FT 2=40FT" value={formData.tamanioid} onChange={handleChange} type="number" />
-                      <InputField name="pesokg"    label="Peso (KG)"   placeholder="Ej. 25000"     value={formData.pesokg}    onChange={handleChange} type="number" />
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <InputField name="numerocontenedor" label="N° Contenedor" placeholder="Ej. HLXU4521098" value={formData.numerocontenedor} onChange={handleChange} />
+                      <InputField name="precinto" label="Precinto de Seguridad" placeholder="Ej. PREC-12345" value={formData.precinto} onChange={handleChange} />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <InputField name="terminalid"         label="ID Terminal"      placeholder="Ej. 1" value={formData.terminalid}         onChange={handleChange} type="number" />
-                      <InputField name="estadocontenedorid" label="ID Estado Físico" placeholder="Ej. 1" value={formData.estadocontenedorid} onChange={handleChange} type="number" />
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <InputField name="tamanioid" label="Tamaño" value={formData.tamanioid} onChange={handleChange} options={auxiliares?.tamanos} />
+                      <InputField name="pesokg" label="Peso Contenedor (KG)" placeholder="Ej. 25000" value={formData.pesokg} onChange={handleChange} type="number" />
                     </div>
-                    <div className="flex gap-3 mt-4">
-                      <button type="button" onClick={() => { setStep(1); setErrorMsg(''); }}
-                        className="flex-1 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                      >
-                        <ArrowLeft className="w-4 h-4" /> Volver
+
+                    <div className="flex flex-col-reverse md:flex-row gap-4 pt-6">
+                      <button type="button" onClick={() => { setStep(1); setErrorMsg(''); }} className="border-2 border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold py-3.5 px-8 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all w-full md:w-auto">
+                        <ArrowLeft className="w-5 h-5" /> Regresar
                       </button>
-                      <button type="submit" disabled={sending}
-                        className="flex-[2] bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md"
-                      >
-                        {sending
-                          ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          : <><CheckCircle2 className="w-4 h-4" /> Enviar Guía</>
-                        }
+                      <button type="submit" disabled={sending} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold py-3.5 px-8 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all w-full md:flex-1 shadow-lg shadow-slate-900/20">
+                        {sending ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> Confirmar y Guardar Guía</>}
                       </button>
                     </div>
                   </div>
                 )}
               </form>
-            </>
+            </div>
           )}
         </div>
       </div>
